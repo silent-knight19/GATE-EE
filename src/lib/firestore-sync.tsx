@@ -1,0 +1,231 @@
+'use client'
+
+import { useEffect, useRef, useCallback } from 'react'
+import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { db, isConfigured } from '@/lib/firebase'
+import { useAuth } from '@/lib/auth-context'
+import { useAppStore, stripFunctions } from '@/lib/store'
+
+const SAVE_DEBOUNCE_MS = 3000
+const STORE_FIELD = 'store'
+const PENDING_KEY = 'gateee-sync-pending'
+const MAX_RETRIES = 3
+const RETRY_DELAY_MS = 5000
+
+/**
+ * Builds the Firestore-safe payload from current store state.
+ * Strips functions, syncStatus, and timerState.
+ */
+function buildPayload(state: ReturnType<typeof useAppStore.getState>): Record<string, unknown> {
+  const payload = stripFunctions(state)
+  delete payload.syncStatus
+  delete payload.timerState
+  delete payload.setTimerState
+  return payload
+}
+
+export function FirestoreSync() {
+  const { user } = useAuth()
+  const initialized = useRef(false)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingSaveRef = useRef(false)
+  const retryCountRef = useRef(0)
+  const skipNextSaveRef = useRef(false)
+  const setSyncStatus = useAppStore((s) => s.setSyncStatus)
+
+  /**
+   * Saves the current store state to Firestore.
+   * On failure, automatically retries up to MAX_RETRIES times.
+   */
+  const doSaveRef = useRef<((state: ReturnType<typeof useAppStore.getState>) => Promise<void>) | null>(null)
+
+  const doSave = useCallback(async (state: ReturnType<typeof useAppStore.getState>) => {
+    if (!db || !user) return
+    try {
+      pendingSaveRef.current = false
+      setSyncStatus({ state: 'saving', lastError: null })
+      const payload = buildPayload(state)
+      const ref = doc(db, 'users', user.uid)
+      await setDoc(ref, { [STORE_FIELD]: payload }, { merge: true })
+      retryCountRef.current = 0
+      setSyncStatus({ state: 'saved' })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown save error'
+
+      if (retryCountRef.current < MAX_RETRIES) {
+        retryCountRef.current++
+        pendingSaveRef.current = true
+        setSyncStatus({ state: 'saving', lastError: `Retrying (${retryCountRef.current}/${MAX_RETRIES})...` })
+        retryTimerRef.current = setTimeout(() => {
+          doSaveRef.current?.(useAppStore.getState())
+        }, RETRY_DELAY_MS)
+      } else {
+        retryCountRef.current = 0
+        pendingSaveRef.current = false
+        setSyncStatus({ state: 'error', lastError: msg })
+      }
+    }
+  }, [user, setSyncStatus])
+
+  useEffect(() => {
+    doSaveRef.current = doSave
+  }, [doSave])
+
+  /**
+   * Flushes any pending save from localStorage that was stashed
+   * during a beforeunload event in a previous session.
+   */
+  const flushPendingSave = useCallback(async () => {
+    if (!db || !user) return
+    try {
+      const raw = localStorage.getItem(PENDING_KEY)
+      if (!raw) return
+      const payload = JSON.parse(raw)
+      const ref = doc(db, 'users', user.uid)
+      await setDoc(ref, { [STORE_FIELD]: payload }, { merge: true })
+      localStorage.removeItem(PENDING_KEY)
+    } catch {
+      // If flushing the stashed data fails, leave it for next attempt.
+    }
+  }, [user])
+
+  /**
+   * Loads user data from Firestore and replaces the local Zustand state.
+   * Firestore is the single source of truth — local state is fully
+   * overwritten (not merged) to prevent cross-device divergence.
+   */
+  const loadFromFirestore = useCallback(async () => {
+    if (!db || !user) return
+
+    try {
+      // First, flush any pending save from a previous session
+      await flushPendingSave()
+
+      const ref = doc(db, 'users', user.uid)
+      const snap = await getDoc(ref)
+      const current = useAppStore.getState()
+
+      if (snap.exists() && snap.data()[STORE_FIELD]) {
+        const remote = snap.data()[STORE_FIELD] as Record<string, unknown>
+
+        // Firestore is the single source of truth.
+        // Remote data fully replaces local state.
+        // Only topicsProgress keeps local defaults for newly added topics
+        // (so new syllabus entries aren't lost if they don't exist remotely yet).
+        const remoteTopics = (remote.topicsProgress || {}) as Record<string, string>
+        const mergedTopics = {
+          ...current.topicsProgress,  // defaults for any new topics
+          ...remoteTopics,            // remote always wins
+        }
+
+        // Set the guard BEFORE setState to prevent the subscribe handler
+        // from immediately saving back what we just loaded
+        skipNextSaveRef.current = true
+
+        useAppStore.setState({
+          user: (remote.user as typeof current.user) || current.user,
+          topicsProgress: mergedTopics,
+          logs: (remote.logs as typeof current.logs) || [],
+          tests: (remote.tests as typeof current.tests) || [],
+          revisionHistory: (remote.revisionHistory as typeof current.revisionHistory) || [],
+          dailyTasks: (remote.dailyTasks as typeof current.dailyTasks) || [],
+          weeklyTargets: (remote.weeklyTargets as typeof current.weeklyTargets) || [],
+          plannerSettings: (remote.plannerSettings as typeof current.plannerSettings) || current.plannerSettings,
+          appState: (remote.appState as typeof current.appState) || current.appState,
+        } as Partial<typeof current>)
+
+        setSyncStatus({ state: 'saved' })
+      } else {
+        // First-time user: push local state up to Firestore
+        const payload = buildPayload(current)
+        await setDoc(ref, { [STORE_FIELD]: payload }, { merge: true })
+        setSyncStatus({ state: 'saved' })
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown load error'
+      setSyncStatus({ state: 'error', lastError: msg })
+    }
+  }, [user, setSyncStatus, flushPendingSave])
+
+  // Load data from Firestore when user signs in
+  useEffect(() => {
+    if (!isConfigured || !db || !user) {
+      initialized.current = false
+      return
+    }
+
+    if (!initialized.current) {
+      initialized.current = true
+      if (useAppStore.persist.hasHydrated()) {
+        loadFromFirestore()
+      } else {
+        const unsub = useAppStore.persist.onFinishHydration(() => {
+          loadFromFirestore()
+        })
+        return () => { unsub() }
+      }
+    }
+  }, [user, loadFromFirestore])
+
+  // Subscribe to store changes and debounce saves
+  useEffect(() => {
+    if (!isConfigured || !db || !user) return
+
+    const unsub = useAppStore.subscribe((state) => {
+      // Skip the save that fires right after loading from Firestore
+      if (skipNextSaveRef.current) {
+        skipNextSaveRef.current = false
+        return
+      }
+
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      pendingSaveRef.current = true
+      retryCountRef.current = 0
+      saveTimerRef.current = setTimeout(() => doSaveRef.current?.(state), SAVE_DEBOUNCE_MS)
+    })
+
+    return () => {
+      unsub()
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
+      if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null }
+    }
+  }, [user, doSave])
+
+  // On tab close, stash unsaved data to localStorage for recovery on next load
+  useEffect(() => {
+    function stashPending() {
+      if (!pendingSaveRef.current) return
+
+      const state = useAppStore.getState()
+      const payload = buildPayload(state)
+
+      try {
+        localStorage.setItem(PENDING_KEY, JSON.stringify(payload))
+      } catch {
+        // localStorage is full or unavailable — nothing we can do
+      }
+    }
+
+    function onBeforeUnload() {
+      stashPending()
+    }
+
+    // Mobile browsers kill tabs without beforeunload
+    function onVisibilityChange() {
+      if (document.visibilityState === 'hidden') {
+        stashPending()
+      }
+    }
+
+    window.addEventListener('beforeunload', onBeforeUnload)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [])
+
+  return null
+}

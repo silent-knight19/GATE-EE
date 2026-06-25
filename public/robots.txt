@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /_next/
+
+Host: https://gateee-electrical.web.app
+Sitemap: https://gateee-electrical.web.app/sitemap.xml
