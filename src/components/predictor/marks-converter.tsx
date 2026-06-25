@@ -1,14 +1,14 @@
 'use client'
 
 import React, { useState, useMemo } from 'react'
-import { marksToRank } from '@/lib/calculators'
-import { categoryQualifyingRatios, gateEe2025Stats, rankMapping } from '@/lib/data/rankMapping'
+import { marksToRank, marksToRankWithHistory, getYearOverYearRankComparison, getPredictorTrendSummary } from '@/lib/calculators'
+import { categoryQualifyingRatios, gateEe2025Stats, rankMapping, yearStats } from '@/lib/data/rankMapping'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Slider } from '@/components/ui/slider'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { MarksGauge } from './marks-gauge'
-import { Info } from 'lucide-react'
+import { Info, TrendingUp, BarChart3 } from 'lucide-react'
 
 const CATEGORIES = ['General', 'OBC', 'EWS', 'SC', 'ST', 'PwD'] as const
 
@@ -19,6 +19,18 @@ export const MarksConverter = React.memo(function MarksConverter() {
   const result = useMemo(() => {
     return marksToRank(marks, category)
   }, [marks, category])
+
+  const resultWithHistory = useMemo(() => {
+    return marksToRankWithHistory(marks, category)
+  }, [marks, category])
+
+  const yearComparison = useMemo(() => {
+    return getYearOverYearRankComparison(marks)
+  }, [marks])
+
+  const trendSummary = useMemo(() => {
+    return getPredictorTrendSummary()
+  }, [])
 
   const referenceTable = useMemo(() => {
     return rankMapping
@@ -72,7 +84,7 @@ export const MarksConverter = React.memo(function MarksConverter() {
                 <span className="font-mono text-lg font-bold tabular-nums">{result.score}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Expected Rank</span>
+                <span className="text-sm text-muted-foreground">Expected Rank (2025 basis)</span>
                 <span className="font-mono text-lg font-bold tabular-nums">
                   {result.expectedRank.toLocaleString()}
                 </span>
@@ -82,6 +94,30 @@ export const MarksConverter = React.memo(function MarksConverter() {
                 <span className="font-mono tabular-nums">
                   {result.minRank.toLocaleString()} – {result.maxRank.toLocaleString()}
                 </span>
+              </div>
+              <div className="border-t border-border/40 pt-2 mt-2">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-foreground mb-1.5">
+                  <TrendingUp className="size-3" />
+                  5-Year Historical Rank Range
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Best rank (since 2022)</span>
+                  <span className="font-mono tabular-nums text-green-600">
+                    {resultWithHistory.historicalMinRank.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Median rank</span>
+                  <span className="font-mono tabular-nums">
+                    {resultWithHistory.historicalMedianRank.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Worst rank (since 2022)</span>
+                  <span className="font-mono tabular-nums text-red-600">
+                    {resultWithHistory.historicalMaxRank.toLocaleString()}
+                  </span>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -93,14 +129,29 @@ export const MarksConverter = React.memo(function MarksConverter() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>
-              GATE score uses the official score formula calibrated with GATE 2025 EE statistics.
-              Rank is an all-India planning estimate because official GATE reports do not publish a
-              complete marks-to-AIR table.
+              GATE score uses the official formula: <span className="font-mono text-xs">Score = 252 + 13.2 × (M − 25)</span> based on
+              GATE 2025 EE: qualifying marks 25 → score 252, AIR-1 marks 81.67 → score 1000.
             </p>
-            <div className="mt-3 rounded-lg border bg-muted/30 p-3 space-y-2">
+            <p>
+              Rank predicted using official 2025 score-to-rank distribution from IIT Roorkee's
+              Statistical Report. Historical range shows what rank the same marks would have
+              achieved in 2022–2026, accounting for varying paper difficulty.
+            </p>
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                <BarChart3 className="size-3" />
+                5-Year Qualifying Marks Trend
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {yearStats.map(s => (
+                  <span key={s.year} className="text-muted-foreground">
+                    {s.year}: <span className="font-mono font-medium text-foreground">{s.qualifyingMarksGeneral}</span>
+                  </span>
+                ))}
+              </div>
               <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
                 <Info className="size-3" />
-                Qualifying Mark Ratios
+                Category Qualifying Ratios
               </div>
               <div className="grid grid-cols-2 gap-1 text-xs">
                 {Object.entries(categoryQualifyingRatios).map(([cat, mult]) => (
@@ -110,8 +161,9 @@ export const MarksConverter = React.memo(function MarksConverter() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                AIR is not category-adjusted. Ratios affect qualifying marks only. GATE 2025 EE:
-                {` ${gateEe2025Stats.appeared.toLocaleString()} appeared, ${gateEe2025Stats.qualified.toLocaleString()} qualified.`}
+                AIR is not category-adjusted. Ratios affect qualifying marks only.
+                {` GATE 2025 EE: ${gateEe2025Stats.appeared.toLocaleString()} appeared, ${gateEe2025Stats.qualified.toLocaleString()} qualified.`}
+                {` 2027 projected qualifying marks: ~${trendSummary.projectedQualifyingMarks2027}.`}
               </p>
             </div>
           </CardContent>
@@ -120,7 +172,41 @@ export const MarksConverter = React.memo(function MarksConverter() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Estimated Reference Table (EE)</CardTitle>
+          <CardTitle>Year-over-Year Rank Comparison</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left">
+                <th className="px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Year</th>
+                <th className="px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Score</th>
+                <th className="px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Expected Rank</th>
+                <th className="px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Difficulty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {yearComparison.map((yc) => {
+                const difficulty = yc.expectedRank <= result.expectedRank * 0.7 ? 'Harder' : yc.expectedRank >= result.expectedRank * 1.3 ? 'Easier' : 'Similar'
+                return (
+                  <tr key={yc.year} className="border-b border-border/40 transition-colors hover:bg-muted/40">
+                    <td className="px-3 py-2 font-mono text-xs tabular-nums">{yc.year}</td>
+                    <td className="px-3 py-2 font-mono text-xs tabular-nums">{yc.score.toFixed(0)}</td>
+                    <td className="px-3 py-2 font-mono text-xs tabular-nums">{yc.expectedRank.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-xs">{difficulty}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Same marks ({marks}) yield different ranks across years due to changing paper difficulty and candidate pool.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Estimated Reference Table (EE) — 2025 Basis</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <table className="w-full text-sm">

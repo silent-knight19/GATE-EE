@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useMemo } from 'react'
-import { marksToRank, rankToMarks } from '@/lib/calculators'
+import { marksToRank, rankToMarks, rankToMarksWithHistory } from '@/lib/calculators'
 import { syllabus } from '@/lib/data/syllabus'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Slider } from '@/components/ui/slider'
@@ -9,7 +9,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { MarksGauge } from './marks-gauge'
-import { TrendingUp, Target, ArrowUp } from 'lucide-react'
+import { TrendingUp, Target, ArrowUp, BarChart3 } from 'lucide-react'
 
 const CATEGORIES = ['General', 'OBC', 'EWS', 'SC', 'ST', 'PwD'] as const
 
@@ -20,6 +20,7 @@ export const TargetTracker = React.memo(function TargetTracker() {
 
   const current = useMemo(() => marksToRank(marks, category), [marks, category])
   const required = useMemo(() => rankToMarks(targetRank, category), [targetRank, category])
+  const requiredWithHistory = useMemo(() => rankToMarksWithHistory(targetRank, category), [targetRank, category])
 
   const gap = useMemo(() => {
     const marksNeeded = Math.max(0, Math.round((required.marks - marks) * 10) / 10)
@@ -166,6 +167,24 @@ export const TargetTracker = React.memo(function TargetTracker() {
                   </p>
                 </div>
               )}
+            </div>
+
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground mb-1.5">
+                <BarChart3 className="size-3" />
+                Marks Required for Rank {targetRank.toLocaleString()} (Historical)
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {requiredWithHistory.historicalMarks.map(h => (
+                  <span key={h.year} className="text-muted-foreground">
+                    {h.year}: <span className="font-mono font-medium text-foreground">{h.marks}</span>
+                  </span>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Range: {requiredWithHistory.marksRange.min} – {requiredWithHistory.marksRange.max} marks
+                across 2022–2026. Your target: {required.marks} marks (2025 basis).
+              </p>
             </div>
           </CardContent>
         </Card>

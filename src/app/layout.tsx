@@ -101,8 +101,8 @@ export default function RootLayout({
                 "Daily study logger with streak tracking",
                 "Mock test score analyzer and error analysis",
                 "GATE rank predictor and marks converter",
-                "Subject weightage analysis (2021–2025)",
-                "PSU recruitment tracker",
+                "Subject weightage analysis (2022–2026)",
+                "job recruitment tracker for electrical engineers",
                 "COAP and CCMT counselling guide"
               ]
             })

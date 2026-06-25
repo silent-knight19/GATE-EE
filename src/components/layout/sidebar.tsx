@@ -49,7 +49,7 @@ const navItems: NavItem[] = [
       { label: "College Predictor", href: "/predictor#college" },
     ],
   },
-  { label: "PSU Tracker", icon: GraduationCap, href: "/psu" },
+  { label: "Jobs", icon: GraduationCap, href: "/jobs" },
   { label: "Resources", icon: Library, href: "/resources" },
   { label: "Counselling", icon: ScrollText, href: "/counselling" },
 ]

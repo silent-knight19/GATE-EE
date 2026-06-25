@@ -18,7 +18,7 @@ const TITLES: Record<string, string> = {
   "/predictor/converter": "Marks Converter",
   "/predictor/rank": "Rank Predictor",
   "/predictor/college": "College Predictor",
-  "/psu": "PSU Tracker",
+  "/jobs": "Jobs",
   "/resources": "Resources",
   "/counselling": "Counselling",
 }

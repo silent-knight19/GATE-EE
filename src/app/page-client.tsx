@@ -17,15 +17,15 @@ interface SubjectInfo {
 
 const subjectData: SubjectInfo[] = [
   { id: "ga", name: "General Aptitude", shortName: "GA", color: "#6366f1", topics: 3, weightage: 15 },
-  { id: "em", name: "Engineering Mathematics", shortName: "EM", color: "#8b5cf6", topics: 5, weightage: 9 },
+  { id: "em", name: "Engineering Mathematics", shortName: "EM", color: "#8b5cf6", topics: 5, weightage: 13 },
   { id: "ec", name: "Electric Circuits", shortName: "Circuits", color: "#f59e0b", topics: 6, weightage: 8 },
-  { id: "emft", name: "Electromagnetic Fields", shortName: "EMFT", color: "#ec4899", topics: 4, weightage: 4 },
-  { id: "ss", name: "Signals and Systems", shortName: "S&S", color: "#f97316", topics: 5, weightage: 8 },
-  { id: "emach", name: "Electrical Machines", shortName: "Mach.", color: "#22c55e", topics: 5, weightage: 10 },
-  { id: "ps", name: "Power Systems", shortName: "P.Sys.", color: "#14b8a6", topics: 6, weightage: 10 },
+  { id: "emft", name: "Electromagnetic Fields", shortName: "EMFT", color: "#ec4899", topics: 4, weightage: 6 },
+  { id: "ss", name: "Signals and Systems", shortName: "S&S", color: "#f97316", topics: 5, weightage: 9 },
+  { id: "emach", name: "Electrical Machines", shortName: "Mach.", color: "#22c55e", topics: 5, weightage: 9 },
+  { id: "ps", name: "Power Systems", shortName: "P.Sys.", color: "#14b8a6", topics: 6, weightage: 9 },
   { id: "csys", name: "Control Systems", shortName: "Control", color: "#06b6d4", topics: 7, weightage: 9 },
-  { id: "eem", name: "Electrical and Electronic Measurements", shortName: "Meas.", color: "#84cc16", topics: 5, weightage: 4 },
-  { id: "ade", name: "Analog and Digital Electronics", shortName: "A&DE", color: "#e11d48", topics: 8, weightage: 13 },
+  { id: "eem", name: "Electrical and Electronic Measurements", shortName: "Meas.", color: "#84cc16", topics: 5, weightage: 3 },
+  { id: "ade", name: "Analog and Digital Electronics", shortName: "A&DE", color: "#e11d48", topics: 8, weightage: 9 },
   { id: "pe", name: "Power Electronics", shortName: "P.Elec.", color: "#a855f7", topics: 6, weightage: 10 },
 ]
 
@@ -33,15 +33,15 @@ const totalTopics = subjectData.reduce((s, sub) => s + sub.topics, 0)
 const totalSubjects = subjectData.length
 
 const weightageData = [
-  { subject: "Engineering Mathematics", marks: "8–10" },
-  { subject: "Electric Circuits", marks: "7–8" },
-  { subject: "Electromagnetic Fields", marks: "3–5" },
-  { subject: "Signals and Systems", marks: "8–9" },
-  { subject: "Electrical Machines", marks: "9–10" },
-  { subject: "Power Systems", marks: "9–11" },
-  { subject: "Control Systems", marks: "9–10" },
-  { subject: "Electrical and Electronic Measurements", marks: "4–5" },
-  { subject: "Analog and Digital Electronics", marks: "12–15" },
+  { subject: "Engineering Mathematics", marks: "11–15" },
+  { subject: "Electric Circuits", marks: "7–10" },
+  { subject: "Electromagnetic Fields", marks: "4–7" },
+  { subject: "Signals and Systems", marks: "6–11" },
+  { subject: "Electrical Machines", marks: "6–12" },
+  { subject: "Power Systems", marks: "6–13" },
+  { subject: "Control Systems", marks: "6–11" },
+  { subject: "Electrical and Electronic Measurements", marks: "2–5" },
+  { subject: "Analog and Digital Electronics", marks: "7–12" },
   { subject: "Power Electronics", marks: "8–11" },
   { subject: "General Aptitude", marks: "15" },
 ]
@@ -200,7 +200,7 @@ export default function PageClient() {
               <div className="text-right font-medium">Scores + errors</div>
               <div className="text-muted-foreground">Rank prediction</div>
               <div className="text-right font-medium">AIR + colleges</div>
-              <div className="text-muted-foreground">PSU recruitment</div>
+              <div className="text-muted-foreground">Job recruitment</div>
               <div className="text-right font-medium">Jobs + cutoffs</div>
               <div className="text-muted-foreground">Counselling guide</div>
               <div className="text-right font-medium">COAP + CCMT</div>

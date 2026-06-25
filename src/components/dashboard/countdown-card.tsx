@@ -18,7 +18,7 @@ const quotes = [
 ]
 
 function CountdownCard() {
-  const examDate = new Date(2027, 1, 7)
+  const examDate = new Date(2027, 1, 13)
   const startDate = new Date(2026, 0, 1)
 
   const [timeLeft, setTimeLeft] = useState(() =>

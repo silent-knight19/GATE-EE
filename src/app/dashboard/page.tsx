@@ -6,7 +6,7 @@ import ExamOverview from "@/components/dashboard/exam-overview"
 export const metadata: Metadata = {
   title: "Dashboard",
   description: "Track your GATE 2027 Electrical Engineering preparation. Features live syllabus overview, subject weightage, recommended study hours, and exam countdown.",
-  keywords: ["GATE 2027", "GATE EE 2027", "GATE preparation dashboard", "GATE study planner", "IIT Roorkee GATE"],
+  keywords: ["GATE 2027", "GATE EE 2027", "GATE preparation dashboard", "GATE study planner", "IIT Madras GATE"],
   alternates: {
     canonical: "https://gateee-electrical.web.app/dashboard",
   },

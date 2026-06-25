@@ -1,32 +1,16 @@
-import type { Metadata } from "next"
-import PageClient from "./page-client"
+'use client'
 
-export const metadata: Metadata = {
-  title: "PSU Recruitment Tracker & Cutoffs",
-  description:
-    "Track PSU job opportunities recruiting through GATE 2027. View salary ranges, eligibility criteria, selection process, and expected cutoffs.",
-  keywords: [
-    "PSU recruitment",
-    "GATE jobs",
-    "PSU cutoffs",
-    "government jobs through GATE",
-    "PSU salary",
-  ],
-  alternates: {
-    canonical: "https://gateee-electrical.web.app/psu",
-  },
-  openGraph: {
-    title: "PSU Recruitment Tracker & Cutoffs | GATE EE 2027 Tracker",
-    description:
-      "Track PSU job opportunities recruiting through GATE 2027. View salary ranges, eligibility criteria, selection process, and expected cutoffs.",
-  },
-  twitter: {
-    title: "PSU Recruitment Tracker & Cutoffs | GATE EE 2027 Tracker",
-    description:
-      "Track PSU job opportunities recruiting through GATE 2027. View salary ranges, eligibility criteria, selection process, and expected cutoffs.",
-  },
-}
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
-export default function Page() {
-  return <PageClient />
+export default function PsuRedirect() {
+  const router = useRouter()
+  useEffect(() => {
+    router.replace('/jobs')
+  }, [router])
+  return (
+    <div className="flex items-center justify-center min-h-[50vh]">
+      <p className="text-sm text-muted-foreground">Redirecting to Jobs page...</p>
+    </div>
+  )
 }

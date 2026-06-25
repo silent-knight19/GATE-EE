@@ -43,7 +43,7 @@ function ExamOverview() {
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Exam Date</p>
-             <p className="text-lg font-bold tabular-nums">Feb 7, 2027</p>
+              <p className="text-lg font-bold tabular-nums">Feb 13, 2027</p>
           </div>
         </div>
       </div>

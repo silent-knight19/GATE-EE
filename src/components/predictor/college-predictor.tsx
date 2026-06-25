@@ -1,13 +1,14 @@
 'use client'
 
 import React, { useState, useMemo } from 'react'
-import { marksToRank } from '@/lib/calculators'
+import { marksToRank, marksToRankWithHistory } from '@/lib/calculators'
 import { COLLEGES, type College } from '@/lib/calculators'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Slider } from '@/components/ui/slider'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { MarksGauge } from './marks-gauge'
+import { TrendingUp } from 'lucide-react'
 
 const CATEGORIES = ['General', 'OBC', 'EWS', 'SC', 'ST', 'PwD'] as const
 
@@ -103,6 +104,11 @@ export const CollegePredictor = React.memo(function CollegePredictor() {
     [marks, category],
   )
 
+  const rankHistory = useMemo(
+    () => marksToRankWithHistory(marks, category),
+    [marks, category],
+  )
+
   const groups = useMemo(() => {
     let list = COLLEGES
     if (tierFilter !== 'all') {
@@ -172,7 +178,7 @@ export const CollegePredictor = React.memo(function CollegePredictor() {
 
       <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-4">
         <div className="space-y-0.5">
-          <p className="text-xs text-muted-foreground">Your Predicted Rank</p>
+          <p className="text-xs text-muted-foreground">Your Predicted Rank (2025 basis)</p>
           <p className="font-mono text-2xl font-bold tabular-nums">
             {predictedRank.expectedRank.toLocaleString()}
           </p>
@@ -190,6 +196,20 @@ export const CollegePredictor = React.memo(function CollegePredictor() {
           <span className="flex items-center gap-1">
             <span className="size-2 rounded-full bg-red-500" /> Reach
           </span>
+        </div>
+      </div>
+
+      <div className="rounded-lg border bg-muted/20 p-3">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-foreground mb-2">
+          <TrendingUp className="size-3" />
+          5-Year Historical Rank Range for {marks} Marks
+        </div>
+        <div className="flex flex-wrap gap-3 text-xs">
+          {rankHistory.yearDetails.map(y => (
+            <span key={y.year} className="text-muted-foreground">
+              {y.year}: <span className="font-mono font-medium text-foreground">{y.rank.toLocaleString()}</span>
+            </span>
+          ))}
         </div>
       </div>
 

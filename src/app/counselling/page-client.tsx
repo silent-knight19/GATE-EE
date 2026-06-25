@@ -116,13 +116,13 @@ function CollegeStrategy() {
     {
       name: 'Safe (AIR 1500–5000)',
       description: 'NITs + IIITs + DTU/NSUT',
-      tip: 'Maximize CCMT choices. Apply to PSUs as a backup.',
+      tip: 'Maximize CCMT choices. Apply to PSUs and govt jobs as a backup.',
       color: 'text-yellow-600',
     },
     {
       name: 'Backup (AIR 5000+)',
-      description: 'GFTIs + Private institutes + PSUs',
-      tip: 'Apply to all GFTIs through CCMT. Explore PSU recruitment and direct PhD programs.',
+      description: 'GFTIs + Private institutes + PSUs + Govt jobs',
+      tip: 'Apply to all GFTIs through CCMT. Explore PSU recruitment, govt job exams, and direct PhD programs.',
       color: 'text-orange-600',
     },
   ]
@@ -163,7 +163,7 @@ function CollegeStrategy() {
             <li className="flex gap-2"><span className="text-foreground font-medium">•</span> Check placement records and average packages for your specialization.</li>
             <li className="flex gap-2"><span className="text-foreground font-medium">•</span> Consider location and campus facilities for a 2-year program.</li>
             <li className="flex gap-2"><span className="text-foreground font-medium">•</span> Use the COAP float option to upgrade without losing current offer.</li>
-            <li className="flex gap-2"><span className="text-foreground font-medium">•</span> Apply to PSUs simultaneously — many recruit through GATE score.</li>
+            <li className="flex gap-2"><span className="text-foreground font-medium">•</span> Apply to PSUs and govt jobs — many recruit through GATE score or have overlapping syllabus.</li>
           </ul>
         </CardContent>
       </Card>
@@ -179,7 +179,7 @@ function Timeline() {
     { date: 'May 2027', title: 'CCMT Registration', description: 'CCMT portal opens for NIT, IIIT, GFTI admissions. Fill choices carefully.' },
     { date: 'May–Jun 2027', title: 'COAP Offer Rounds', description: 'COAP offer rounds begin. Accept, float, or reject offers.' },
     { date: 'Jun–Jul 2027', title: 'CCMT Allotment Rounds', description: 'Multiple seat allocation rounds through CCMT.' },
-    { date: 'Jul 2027', title: 'PSU Recruitment Drive', description: 'Major PSUs begin recruitment drives through GATE score.' },
+    { date: 'Jul 2027', title: 'PSU & Govt Job Recruitment', description: 'Major PSUs begin recruitment drives through GATE score. Govt job exams (SSC JE, etc.) also start.' },
     { date: 'Jul–Aug 2027', title: 'Institute Reporting', description: 'Report to allotted institute for document verification and admission.' },
     { date: 'Aug 2027', title: 'Academic Session Begins', description: 'M.Tech/ME programs start across institutes.' },
   ]

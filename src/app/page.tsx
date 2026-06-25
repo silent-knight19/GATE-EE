@@ -9,7 +9,7 @@ const totalHours = syllabus.reduce((s, sub) => s + sub.topics.reduce((t, topic) 
 export const metadata: Metadata = {
   title: "GATE EE 2027 Tracker — Free All-in-One Study Planner & Rank Predictor",
   description:
-    `Prepare for GATE Electrical Engineering 2027 with this free tracker. Across ${totalSubjects} subjects and ${totalTopics} topics (≈${totalHours}h of material), plan your syllabus, log daily study, analyze mocks, predict rank, and track PSU recruitment — all in one dashboard. No sign-up needed.`,
+    `Prepare for GATE Electrical Engineering 2027 with this free tracker. Across ${totalSubjects} subjects and ${totalTopics} topics (≈${totalHours}h of material), plan your syllabus, log daily study, analyze mocks, predict rank, and track job recruitment — all in one dashboard. No sign-up needed.`,
   keywords: [
     "GATE EE 2027 preparation tracker",
     "GATE Electrical Engineering study planner free",
@@ -19,10 +19,10 @@ export const metadata: Metadata = {
     "GATE study streak tracker",
     "GATE marks to rank converter",
     "GATE subject weightage analysis",
-    "GATE PSU recruitment tracker",
+    "GATE EE job recruitment tracker",
     "GATE COAP counselling guide",
     "GATE EE preparation",
-    "IIT Roorkee GATE 2027 tracker",
+    "IIT Madras GATE 2027 tracker",
     "GATE EE topic-wise syllabus",
   ],
   openGraph: {
@@ -71,7 +71,7 @@ export default function Home() {
     operatingSystem: "Web",
     offers: { "@type": "Offer", price: "0", priceCurrency: "INR" },
     description:
-      `Free all-in-one dashboard for GATE EE 2027 aspirants. Track ${totalTopics} topics across ${totalSubjects} subjects, log daily study hours, analyze mock tests, predict rank, and monitor PSU recruitment.`,
+      `Free all-in-one dashboard for GATE EE 2027 aspirants. Track ${totalTopics} topics across ${totalSubjects} subjects, log daily study hours, analyze mock tests, predict rank, and monitor job recruitment.`,
     featureList: [
       "EE syllabus progress tracker with weightage analysis",
       "Daily study logger with streak tracking",
@@ -101,7 +101,7 @@ export default function Home() {
         name: "What is GATE EE 2027?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "GATE (Graduate Aptitude Test in Engineering) EE 2027 is the Electrical Engineering paper of the national-level engineering exam conducted by IIT Roorkee for the 2027 cycle. It is used for M.Tech admissions to IITs, NITs, and IIITs, as well as PSU recruitment.",
+          text: "GATE (Graduate Aptitude Test in Engineering) EE 2027 is the Electrical Engineering paper of the national-level engineering exam conducted by IIT Madras for the 2027 cycle. It is used for M.Tech admissions to IITs, NITs, and IIITs, as well as PSU and government job recruitment.",
         },
       },
       {

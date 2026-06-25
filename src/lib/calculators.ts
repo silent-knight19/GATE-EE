@@ -1,4 +1,15 @@
-import { gateEe2025Stats, rankMapping, categoryQualifyingRatios } from '@/lib/data/rankMapping'
+import {
+  rankMapping,
+  categoryQualifyingRatios,
+  yearStats,
+  getScoreParamsForYear,
+  computeScore,
+  estimateMarksFromScore,
+  getRankFromScore,
+  getHistoricalRankRange,
+  getTrendAnalysis,
+  getRankForMarksInYear,
+} from '@/lib/data/rankMapping'
 import type { Subject } from '@/lib/data/syllabus'
 
 export interface RankPrediction {
@@ -6,6 +17,13 @@ export interface RankPrediction {
   maxRank: number
   expectedRank: number
   score: number
+}
+
+export interface RankPredictionWithHistory extends RankPrediction {
+  historicalMinRank: number
+  historicalMaxRank: number
+  historicalMedianRank: number
+  yearDetails: { year: number; rank: number }[]
 }
 
 export interface VelocityResult {
@@ -63,22 +81,11 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export function marksToScore(marks: number): number {
-  const clamped = Math.min(100, Math.max(0, marks))
-  let bracket = rankMapping[rankMapping.length - 1]
-  for (const entry of rankMapping) {
-    if (clamped >= entry.minMarks && clamped <= entry.maxMarks) {
-      bracket = entry
-      break
-    }
-  }
-  const ratio = (clamped - bracket.minMarks) / (Math.max(bracket.maxMarks - bracket.minMarks, 1))
-  const score = bracket.minScore + ratio * (bracket.maxScore - bracket.minScore)
-  return Math.round(clamp(score, 0, 1000) * 100) / 100
+  return computeScore(marks)
 }
 
 export function marksToRank(marks: number, category: string = 'General'): RankPrediction {
   const clamped = Math.min(100, Math.max(0, marks))
-
   const ratio = categoryQualifyingRatios[category as keyof typeof categoryQualifyingRatios] ?? 1
   const adjustedMarks = clamped * ratio
 
@@ -92,7 +99,7 @@ export function marksToRank(marks: number, category: string = 'General'): RankPr
 
   const ratio2 = (adjustedMarks - bracket.minMarks) / (Math.max(bracket.maxMarks - bracket.minMarks, 1))
   const baseRank = bracket.maxRank - ratio2 * (bracket.maxRank - bracket.minRank)
-  const score = marksToScore(clamped)
+  const score = computeScore(clamped)
 
   return {
     minRank: Math.max(1, Math.round(bracket.minRank)),
@@ -107,10 +114,74 @@ export function rankToMarks(targetRank: number, _category: string = 'General'): 
     if (targetRank >= entry.minRank && targetRank <= entry.maxRank) {
       const rankRatio = (targetRank - entry.minRank) / (Math.max(entry.maxRank - entry.minRank, 1))
       const marks = entry.maxMarks - rankRatio * (entry.maxMarks - entry.minMarks)
-      return { marks: Math.round(marks * 10) / 10, score: marksToScore(marks) }
+      return { marks: Math.round(marks * 10) / 10, score: computeScore(marks) }
     }
   }
   return { marks: 0, score: 0 }
+}
+
+export function marksToRankWithHistory(marks: number, category: string = 'General'): RankPredictionWithHistory {
+  const primary = marksToRank(marks, category)
+  const history = getHistoricalRankRange(marks)
+
+  return {
+    ...primary,
+    historicalMinRank: history.bestRank,
+    historicalMaxRank: history.worstRank,
+    historicalMedianRank: history.medianRank,
+    yearDetails: history.years.map(y => ({ year: y.year, rank: y.expectedRank })),
+  }
+}
+
+export function rankToMarksWithHistory(targetRank: number, category: string = 'General'): {
+  marks: number
+  score: number
+  historicalMarks: { year: number; marks: number }[]
+  marksRange: { min: number; max: number }
+} {
+  const primary = rankToMarks(targetRank, category)
+  const historicalMarks: { year: number; marks: number }[] = []
+
+  for (const stats of yearStats) {
+    const params = getScoreParamsForYear(stats.year)
+    for (const bracket of stats.scoreToRank) {
+      if (targetRank >= bracket.minRank && targetRank <= bracket.maxRank) {
+        const rankRatio = (targetRank - bracket.minRank) / (Math.max(bracket.maxRank - bracket.minRank, 1))
+        const score = bracket.maxScore - rankRatio * (bracket.maxScore - bracket.minScore)
+        const marks = estimateMarksFromScore(score, params)
+        historicalMarks.push({ year: stats.year, marks })
+        break
+      }
+    }
+  }
+
+  const sorted = [...historicalMarks].sort((a, b) => a.marks - b.marks)
+  return {
+    ...primary,
+    historicalMarks,
+    marksRange: {
+      min: sorted.length > 0 ? sorted[0].marks : 0,
+      max: sorted.length > 0 ? sorted[sorted.length - 1].marks : 100,
+    },
+  }
+}
+
+export function getYearOverYearRankComparison(marks: number): {
+  year: number
+  expectedRank: number
+  score: number
+  params: { mq: number; mt: number }
+}[] {
+  return yearStats.map(stats => {
+    const params = getScoreParamsForYear(stats.year)
+    const score = computeScore(marks, params)
+    const rank = getRankFromScore(score, stats.scoreToRank)
+    return { year: stats.year, expectedRank: rank.expectedRank, score, params }
+  })
+}
+
+export function getPredictorTrendSummary() {
+  return getTrendAnalysis()
 }
 
 export function getDaysUntilExam(targetDate?: Date, excludeWeekends?: boolean): CountdownResult {
@@ -395,29 +466,30 @@ export interface College {
 }
 
 export const COLLEGES: College[] = [
-  { id: 'iisc-bangalore', name: 'IISc Bangalore', tier: 'IIT', specializations: ['EE'], city: 'Bangalore', state: 'Karnataka', cutoffScore: 860, cutoffSource: 'IISc Admission GATE Cutoff 2024-25' },
-  { id: 'iit-bombay', name: 'IIT Bombay', tier: 'IIT', specializations: ['EE'], city: 'Mumbai', state: 'Maharashtra', cutoffScore: 835, cutoffSource: 'IIT Bombay minimum GATE cut-off 2024-25' },
-  { id: 'iit-delhi', name: 'IIT Delhi', tier: 'IIT', specializations: ['EE'], city: 'New Delhi', state: 'Delhi', cutoffScore: 810, cutoffSource: 'IIT Delhi EE shortlisting criteria 2024-25' },
-  { id: 'iit-madras', name: 'IIT Madras', tier: 'IIT', specializations: ['EE'], city: 'Chennai', state: 'Tamil Nadu', cutoffScore: 790, cutoffSource: 'IIT Madras M.Tech COAP reports 2024-25' },
-  { id: 'iit-kanpur', name: 'IIT Kanpur', tier: 'IIT', specializations: ['EE'], city: 'Kanpur', state: 'Uttar Pradesh', cutoffScore: 780, cutoffSource: 'COAP institute cut-off reports; median estimate' },
-  { id: 'iit-kharagpur', name: 'IIT Kharagpur', tier: 'IIT', specializations: ['EE'], city: 'Kharagpur', state: 'West Bengal', cutoffScore: 760, cutoffSource: 'COAP institute cut-off reports; median estimate' },
-  { id: 'iit-roorkee', name: 'IIT Roorkee', tier: 'IIT', specializations: ['EE'], city: 'Roorkee', state: 'Uttarakhand', cutoffScore: 745, cutoffSource: 'COAP institute cut-off reports; median estimate' },
-  { id: 'iit-guwahati', name: 'IIT Guwahati', tier: 'IIT', specializations: ['EE'], city: 'Guwahati', state: 'Assam', cutoffScore: 720, cutoffSource: 'COAP institute cut-off reports; median estimate' },
-  { id: 'iit-hyderabad', name: 'IIT Hyderabad', tier: 'IIT', specializations: ['EE'], city: 'Hyderabad', state: 'Telangana', cutoffScore: 710, cutoffSource: 'COAP 2024-25 round-wise GATE data' },
-  { id: 'iit-bhu', name: 'IIT (BHU) Varanasi', tier: 'IIT', specializations: ['EE'], city: 'Varanasi', state: 'Uttar Pradesh', cutoffScore: 690, cutoffSource: 'COAP institute cut-off reports; median estimate' },
-  { id: 'iit-jodhpur', name: 'IIT Jodhpur', tier: 'IIT', specializations: ['EE'], city: 'Jodhpur', state: 'Rajasthan', cutoffScore: 645, cutoffSource: 'COAP 2024-25 round-wise GATE data' },
-  { id: 'iit-patna', name: 'IIT Patna', tier: 'IIT', specializations: ['EE'], city: 'Patna', state: 'Bihar', cutoffScore: 630, cutoffSource: 'COAP institute cut-off reports; median estimate' },
-  { id: 'nit-trichy', name: 'NIT Trichy', tier: 'NIT', specializations: ['EE'], city: 'Tiruchirappalli', state: 'Tamil Nadu', cutoffScore: 735, cutoffSource: 'CCMT 2024-25 Opening/Closing Scores' },
-  { id: 'nit-warangal', name: 'NIT Warangal', tier: 'NIT', specializations: ['EE'], city: 'Warangal', state: 'Telangana', cutoffScore: 720, cutoffSource: 'CCMT 2024-25 Opening/Closing Scores' },
-  { id: 'nit-surathkal', name: 'NIT Surathkal', tier: 'NIT', specializations: ['EE'], city: 'Mangalore', state: 'Karnataka', cutoffScore: 710, cutoffSource: 'CCMT 2024-25 Opening/Closing Scores' },
-  { id: 'nit-calicut', name: 'NIT Calicut', tier: 'NIT', specializations: ['EE'], city: 'Calicut', state: 'Kerala', cutoffScore: 665, cutoffSource: 'CCMT 2024-25 Opening/Closing Scores' },
-  { id: 'mnnit', name: 'MNNIT Allahabad', tier: 'NIT', specializations: ['EE'], city: 'Prayagraj', state: 'Uttar Pradesh', cutoffScore: 650, cutoffSource: 'CCMT 2024-25 Opening/Closing Scores' },
-  { id: 'nit-durgapur', name: 'NIT Durgapur', tier: 'NIT', specializations: ['EE'], city: 'Durgapur', state: 'West Bengal', cutoffScore: 610, cutoffSource: 'CCMT 2024-25 Opening/Closing Scores' },
-  { id: 'nit-kurukshetra', name: 'NIT Kurukshetra', tier: 'NIT', specializations: ['EE'], city: 'Kurukshetra', state: 'Haryana', cutoffScore: 600, cutoffSource: 'CCMT 2024-25 Opening/Closing Scores' },
-  { id: 'svnit', name: 'SVNIT Surat', tier: 'NIT', specializations: ['EE'], city: 'Surat', state: 'Gujarat', cutoffScore: 580, cutoffSource: 'CCMT 2024-25 Opening/Closing Scores' },
-  { id: 'nit-patna', name: 'NIT Patna', tier: 'NIT', specializations: ['EE'], city: 'Patna', state: 'Bihar', cutoffScore: 540, cutoffSource: 'CCMT 2024-25 Opening/Closing Scores' },
-  { id: 'nit-silchar', name: 'NIT Silchar', tier: 'NIT', specializations: ['EE'], city: 'Silchar', state: 'Assam', cutoffScore: 520, cutoffSource: 'CCMT 2024-25 Opening/Closing Scores' },
-  { id: 'iiest-shibpur', name: 'IIEST Shibpur', tier: 'GFTI', specializations: ['EE'], city: 'Shibpur', state: 'West Bengal', cutoffScore: 520, cutoffSource: 'CCMT 2024-25 Opening/Closing Scores' },
-  { id: 'dtu-delhi', name: 'DTU Delhi', tier: 'GFTI', specializations: ['EE'], city: 'Delhi', state: 'Delhi', cutoffScore: 500, cutoffSource: 'CCMT 2024-25 Opening/Closing Scores' },
-  { id: 'pec', name: 'PEC Chandigarh', tier: 'GFTI', specializations: ['EE'], city: 'Chandigarh', state: 'Chandigarh', cutoffScore: 480, cutoffSource: 'CCMT 2024-25 Opening/Closing Scores' },
+  { id: 'iisc-bangalore', name: 'IISc Bangalore', tier: 'IIT', specializations: ['EE'], city: 'Bangalore', state: 'Karnataka', cutoffScore: 876, cutoffSource: 'IISc EE COAP 2024 R1 closing score' },
+  { id: 'iit-bombay', name: 'IIT Bombay', tier: 'IIT', specializations: ['EE'], city: 'Mumbai', state: 'Maharashtra', cutoffScore: 750, cutoffSource: 'IIT Bombay EE3 (Power Electronics) COAP 2024 R1' },
+  { id: 'iit-delhi', name: 'IIT Delhi', tier: 'IIT', specializations: ['EE'], city: 'New Delhi', state: 'Delhi', cutoffScore: 735, cutoffSource: 'IIT Delhi Power Systems COAP 2024 R1' },
+  { id: 'iit-madras', name: 'IIT Madras', tier: 'IIT', specializations: ['EE'], city: 'Chennai', state: 'Tamil Nadu', cutoffScore: 709, cutoffSource: 'IIT Madras EE2Y Power Systems COAP 2024 R1' },
+  { id: 'iit-kanpur', name: 'IIT Kanpur', tier: 'IIT', specializations: ['EE'], city: 'Kanpur', state: 'Uttar Pradesh', cutoffScore: 731, cutoffSource: 'IIT Kanpur PE (Power Engineering) COAP 2024 R1' },
+  { id: 'iit-kharagpur', name: 'IIT Kharagpur', tier: 'IIT', specializations: ['EE'], city: 'Kharagpur', state: 'West Bengal', cutoffScore: 608, cutoffSource: 'IIT KGP EE4 COAP 2024 cutoff' },
+  { id: 'iit-roorkee', name: 'IIT Roorkee', tier: 'IIT', specializations: ['EE'], city: 'Roorkee', state: 'Uttarakhand', cutoffScore: 760, cutoffSource: 'IIT Roorkee Power System Engg COAP 2024 R1' },
+  { id: 'iit-guwahati', name: 'IIT Guwahati', tier: 'IIT', specializations: ['EE'], city: 'Guwahati', state: 'Assam', cutoffScore: 650, cutoffSource: 'IITG EE COAP 2024 median estimate' },
+  { id: 'iit-hyderabad', name: 'IIT Hyderabad', tier: 'IIT', specializations: ['EE'], city: 'Hyderabad', state: 'Telangana', cutoffScore: 680, cutoffSource: 'IITH Power Electronics COAP 2024 data' },
+  { id: 'iit-bhu', name: 'IIT (BHU) Varanasi', tier: 'IIT', specializations: ['EE'], city: 'Varanasi', state: 'Uttar Pradesh', cutoffScore: 622, cutoffSource: 'IIT BHU PE (Power Electronics) COAP 2025 R1' },
+  { id: 'iit-jodhpur', name: 'IIT Jodhpur', tier: 'IIT', specializations: ['EE'], city: 'Jodhpur', state: 'Rajasthan', cutoffScore: 610, cutoffSource: 'IIT Jodhpur EEC (Control) COAP 2024 R1' },
+  { id: 'iit-patna', name: 'IIT Patna', tier: 'IIT', specializations: ['EE'], city: 'Patna', state: 'Bihar', cutoffScore: 480, cutoffSource: 'IIT Patna EE COAP 2024 median estimate' },
+  { id: 'nit-trichy', name: 'NIT Trichy', tier: 'NIT', specializations: ['EE'], city: 'Tiruchirappalli', state: 'Tamil Nadu', cutoffScore: 555, cutoffSource: 'NIT Trichy Power Electronics CCMT 2024 R1' },
+  { id: 'nit-warangal', name: 'NIT Warangal', tier: 'NIT', specializations: ['EE'], city: 'Warangal', state: 'Telangana', cutoffScore: 509, cutoffSource: 'NIT Warangal Power & Energy CCMT 2024 R1' },
+  { id: 'nit-surathkal', name: 'NIT Surathkal', tier: 'NIT', specializations: ['EE'], city: 'Mangalore', state: 'Karnataka', cutoffScore: 557, cutoffSource: 'NITK Surathkal Power & Energy CCMT 2024 R1' },
+  { id: 'nit-calicut', name: 'NIT Calicut', tier: 'NIT', specializations: ['EE'], city: 'Calicut', state: 'Kerala', cutoffScore: 421, cutoffSource: 'NIT Calicut Power Electronics CCMT 2024 R1' },
+  { id: 'mnnit', name: 'MNNIT Allahabad', tier: 'NIT', specializations: ['EE'], city: 'Prayagraj', state: 'Uttar Pradesh', cutoffScore: 435, cutoffSource: 'MNNIT Power Electronics & Drives CCMT 2024 R1' },
+  { id: 'nit-rourkela', name: 'NIT Rourkela', tier: 'NIT', specializations: ['EE'], city: 'Rourkela', state: 'Odisha', cutoffScore: 503, cutoffSource: 'NIT Rourkela PE&Drives CCMT 2024 R1' },
+  { id: 'nit-durgapur', name: 'NIT Durgapur', tier: 'NIT', specializations: ['EE'], city: 'Durgapur', state: 'West Bengal', cutoffScore: 398, cutoffSource: 'NIT Durgapur Power System CCMT 2024 R1' },
+  { id: 'nit-kurukshetra', name: 'NIT Kurukshetra', tier: 'NIT', specializations: ['EE'], city: 'Kurukshetra', state: 'Haryana', cutoffScore: 380, cutoffSource: 'NIT Kurukshetra EE CCMT 2024 estimate' },
+  { id: 'svnit', name: 'SVNIT Surat', tier: 'GFTI', specializations: ['EE'], city: 'Surat', state: 'Gujarat', cutoffScore: 424, cutoffSource: 'SVNIT Power Electronics & Drives CCMT 2024 R1' },
+  { id: 'nit-patna', name: 'NIT Patna', tier: 'NIT', specializations: ['EE'], city: 'Patna', state: 'Bihar', cutoffScore: 380, cutoffSource: 'NIT Patna EE CCMT 2024 estimate' },
+  { id: 'nit-silchar', name: 'NIT Silchar', tier: 'NIT', specializations: ['EE'], city: 'Silchar', state: 'Assam', cutoffScore: 350, cutoffSource: 'NIT Silchar EE CCMT 2024 estimate' },
+  { id: 'iiest-shibpur', name: 'IIEST Shibpur', tier: 'GFTI', specializations: ['EE'], city: 'Shibpur', state: 'West Bengal', cutoffScore: 429, cutoffSource: 'IIEST Shibpur PEMD CCMT 2024 R1' },
+  { id: 'dtu-delhi', name: 'DTU Delhi', tier: 'GFTI', specializations: ['EE'], city: 'Delhi', state: 'Delhi', cutoffScore: 400, cutoffSource: 'DTU Power System Engg CCMT 2024 R1' },
+  { id: 'pec', name: 'PEC Chandigarh', tier: 'GFTI', specializations: ['EE'], city: 'Chandigarh', state: 'Chandigarh', cutoffScore: 354, cutoffSource: 'PEC EE/EES CCMT 2024 R1' },
 ]
