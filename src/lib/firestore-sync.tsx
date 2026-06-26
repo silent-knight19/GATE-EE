@@ -103,56 +103,97 @@ export function FirestoreSync() {
         ? (snap.data()[STORE_FIELD] as Record<string, unknown> | undefined)
         : null
 
-      // --- Step 3: Merge — local > stash > remote (prefer local, fall back to stash, then remote) ---
-      const pick = <T,>(local: T, stash: T | undefined, remote: T | undefined, preferRemote = false): T => {
-        if (Array.isArray(local) && Array.isArray(remote)) {
-          if (stash && Array.isArray(stash) && stash.length > 0) return stash as T
-          if (local.length > 0) return local
-          if (remote && remote.length > 0) return remote
-          return local
-        }
-        if (local && typeof local === 'object' && remote && typeof remote === 'object') {
-          if (stash && typeof stash === 'object' && Object.keys(stash).length > 0) {
-            return { ...remote, ...stash, ...local } as T
+      // --- Step 3: Union/LocalMerge — combine all three sources per field ---
+      // Arrays: UNION (keep items from ALL sources, deduplicate by JSON identity)
+      // Records: MERGE with local keys winning
+      // Objects: prefer remote (cross-device consistency), fall back to stash, then local
+
+      const unionArrays = <T,>(...sources: (T[] | undefined)[]): T[] => {
+        const seen = new Set<string>()
+        const result: T[] = []
+        for (const arr of sources) {
+          if (!arr) continue
+          for (const item of arr) {
+            const key = JSON.stringify(item)
+            if (!seen.has(key)) {
+              seen.add(key)
+              result.push(item)
+            }
           }
-          if (Object.keys(local as object).length > 0) {
-            if (preferRemote) return { ...local, ...remote } as T
-            return { ...remote, ...local } as T
-          }
-          if (remote && Object.keys(remote as object).length > 0) return remote
-          return local
         }
-        if (stash !== undefined && stash !== null) return stash as T
-        if (local !== undefined && local !== null) {
-          if (typeof local === 'string' && local !== '') return local
-          if (typeof local === 'number') return local
-          if (typeof local === 'boolean') return local
-          if (local) return local
+        return result
+      }
+
+      const mergeRecord = <T extends Record<string, unknown>>(local: T, ...others: (T | undefined)[]): T => {
+        let merged = { ...local } as Record<string, unknown>
+        for (const src of others) {
+          if (src) merged = { ...src, ...merged }
         }
-        if (remote !== undefined && remote !== null) return remote as T
+        return merged as T
+      }
+
+      const preferObject = <T extends Record<string, unknown>>(
+        remote: T | undefined, stash: T | undefined, local: T
+      ): T => {
+        // Prefer remote (cross-device consistency), fall back to stash, then local
+        if (remote && Object.keys(remote).length > 0) return remote
+        if (stash && Object.keys(stash).length > 0) return stash
         return local
       }
 
-      const mergedTopics = {
-        ...(remoteData?.topicsProgress as Record<string, string> || {}),
-        ...(stashData?.topicsProgress as Record<string, string> || {}),
-        ...current.topicsProgress,
-      }
-
-      const mergedUser = pick(
-        current.user,
-        stashData?.user as typeof current.user | undefined,
-        remoteData?.user as typeof current.user | undefined,
-        true
+      const mergedTopics = mergeRecord(
+        current.topicsProgress,
+        stashData?.topicsProgress as Record<string, string> | undefined,
+        remoteData?.topicsProgress as Record<string, string> | undefined,
       )
 
-      const mergedLogs = pick(current.logs, stashData?.logs as typeof current.logs | undefined, remoteData?.logs as typeof current.logs | undefined)
-      const mergedTests = pick(current.tests, stashData?.tests as typeof current.tests | undefined, remoteData?.tests as typeof current.tests | undefined)
-      const mergedRevision = pick(current.revisionHistory, stashData?.revisionHistory as typeof current.revisionHistory | undefined, remoteData?.revisionHistory as typeof current.revisionHistory | undefined)
-      const mergedTasks = pick(current.dailyTasks, stashData?.dailyTasks as typeof current.dailyTasks | undefined, remoteData?.dailyTasks as typeof current.dailyTasks | undefined)
-      const mergedTargets = pick(current.weeklyTargets, stashData?.weeklyTargets as typeof current.weeklyTargets | undefined, remoteData?.weeklyTargets as typeof current.weeklyTargets | undefined)
-      const mergedSettings = pick(current.plannerSettings, stashData?.plannerSettings as typeof current.plannerSettings | undefined, remoteData?.plannerSettings as typeof current.plannerSettings | undefined, true)
-      const mergedAppState = pick(current.appState, stashData?.appState as typeof current.appState | undefined, remoteData?.appState as typeof current.appState | undefined, true)
+      const mergedLogs = unionArrays(
+        current.logs,
+        stashData?.logs as typeof current.logs | undefined,
+        remoteData?.logs as typeof current.logs | undefined,
+      )
+
+      const mergedTests = unionArrays(
+        current.tests,
+        stashData?.tests as typeof current.tests | undefined,
+        remoteData?.tests as typeof current.tests | undefined,
+      )
+
+      const mergedRevision = unionArrays(
+        current.revisionHistory,
+        stashData?.revisionHistory as typeof current.revisionHistory | undefined,
+        remoteData?.revisionHistory as typeof current.revisionHistory | undefined,
+      )
+
+      const mergedTasks = unionArrays(
+        current.dailyTasks,
+        stashData?.dailyTasks as typeof current.dailyTasks | undefined,
+        remoteData?.dailyTasks as typeof current.dailyTasks | undefined,
+      )
+
+      const mergedTargets = unionArrays(
+        current.weeklyTargets,
+        stashData?.weeklyTargets as typeof current.weeklyTargets | undefined,
+        remoteData?.weeklyTargets as typeof current.weeklyTargets | undefined,
+      )
+
+      const mergedUser = preferObject(
+        remoteData?.user as Record<string, unknown> | undefined,
+        stashData?.user as Record<string, unknown> | undefined,
+        current.user as unknown as Record<string, unknown>,
+      ) as unknown as typeof current.user
+
+      const mergedSettings = preferObject(
+        remoteData?.plannerSettings as Record<string, unknown> | undefined,
+        stashData?.plannerSettings as Record<string, unknown> | undefined,
+        current.plannerSettings as unknown as Record<string, unknown>,
+      ) as unknown as typeof current.plannerSettings
+
+      const mergedAppState = preferObject(
+        remoteData?.appState as Record<string, unknown> | undefined,
+        stashData?.appState as Record<string, unknown> | undefined,
+        current.appState as unknown as Record<string, unknown>,
+      ) as unknown as typeof current.appState
 
       // --- Step 5: Apply merged state to store ---
       skipNextSaveRef.current = true
