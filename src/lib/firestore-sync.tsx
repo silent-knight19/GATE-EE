@@ -108,13 +108,27 @@ export function FirestoreSync() {
       // Records: MERGE with local keys winning
       // Objects: prefer remote (cross-device consistency), fall back to stash, then local
 
+      const canonicalKey = (item: unknown): string => {
+        // Sort keys to produce the same string regardless of property insertion order.
+        // Firestore and localStorage may return objects with different key orderings,
+        // which would cause JSON.stringify to produce different strings for identical data.
+        if (item && typeof item === 'object' && !Array.isArray(item)) {
+          const sorted: Record<string, unknown> = {}
+          for (const k of Object.keys(item).sort()) {
+            sorted[k] = (item as Record<string, unknown>)[k]
+          }
+          return JSON.stringify(sorted)
+        }
+        return JSON.stringify(item)
+      }
+
       const unionArrays = <T,>(...sources: (T[] | undefined)[]): T[] => {
         const seen = new Set<string>()
         const result: T[] = []
         for (const arr of sources) {
           if (!arr) continue
           for (const item of arr) {
-            const key = JSON.stringify(item)
+            const key = canonicalKey(item)
             if (!seen.has(key)) {
               seen.add(key)
               result.push(item)
