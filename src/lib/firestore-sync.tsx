@@ -10,7 +10,9 @@ const SAVE_DEBOUNCE_MS = 3000
 const STORE_FIELD = 'store'
 const PENDING_KEY = 'gateee-sync-pending'
 const MAX_RETRIES = 3
-const RETRY_DELAY_MS = 5000
+const RETRY_DELAY_MS = 1000
+const MAX_LOAD_RETRIES = 2
+const LOAD_RETRY_DELAY_MS = 2000
 
 /**
  * Builds the Firestore-safe payload from current store state.
@@ -34,10 +36,6 @@ export function FirestoreSync() {
   const skipNextSaveRef = useRef(false)
   const setSyncStatus = useAppStore((s) => s.setSyncStatus)
 
-  /**
-   * Saves the current store state to Firestore.
-   * On failure, automatically retries up to MAX_RETRIES times.
-   */
   const doSaveRef = useRef<((state: ReturnType<typeof useAppStore.getState>) => Promise<void>) | null>(null)
 
   const doSave = useCallback(async (state: ReturnType<typeof useAppStore.getState>) => {
@@ -73,80 +71,136 @@ export function FirestoreSync() {
   }, [doSave])
 
   /**
-   * Flushes any pending save from localStorage that was stashed
-   * during a beforeunload event in a previous session.
+   * Checks for and recovers stashed crash data.
+   * Returns true if stashed data was found and flushed to Firestore.
+   * Only called when Firestore document doesn't exist yet (first load).
    */
-  const flushPendingSave = useCallback(async () => {
-    if (!db || !user) return
+  const recoverCrashData = useCallback(async (): Promise<boolean> => {
+    if (!db || !user) return false
     try {
       const raw = localStorage.getItem(PENDING_KEY)
-      if (!raw) return
+      if (!raw) return false
       const payload = JSON.parse(raw)
       const ref = doc(db, 'users', user.uid)
       await setDoc(ref, { [STORE_FIELD]: payload }, { merge: true })
       localStorage.removeItem(PENDING_KEY)
+      return true
     } catch {
-      // If flushing the stashed data fails, leave it for next attempt.
+      return false
     }
   }, [user])
 
   /**
-   * Loads user data from Firestore and replaces the local Zustand state.
-   * Firestore is the single source of truth — local state is fully
-   * overwritten (not merged) to prevent cross-device divergence.
+   * Discards stale crash-recovery stash when Firestore already has fresher data.
    */
-  const loadFromFirestore = useCallback(async () => {
+  const discardStash = useCallback(() => {
+    try {
+      const raw = localStorage.getItem(PENDING_KEY)
+      if (raw) localStorage.removeItem(PENDING_KEY)
+    } catch { /* ignore */ }
+  }, [])
+
+  /**
+   * Loads user data from Firestore into local Zustand state.
+   * Firestore is the single source of truth.
+   * Fixed: flushPendingSave runs only when doc doesn't exist (crash recovery).
+   * Fixed: retry on load failure.
+   * Fixed: setState and syncStatus combined to prevent redundant save-back.
+   */
+  const loadFromFirestore = useCallback(async (retryAttempt = 0) => {
     if (!db || !user) return
 
     try {
-      // First, flush any pending save from a previous session
-      await flushPendingSave()
-
       const ref = doc(db, 'users', user.uid)
       const snap = await getDoc(ref)
       const current = useAppStore.getState()
 
-      if (snap.exists() && snap.data()[STORE_FIELD]) {
-        const remote = snap.data()[STORE_FIELD] as Record<string, unknown>
+      if (snap.exists()) {
+        const remoteData = snap.data()[STORE_FIELD] as Record<string, unknown> | undefined
 
-        // Firestore is the single source of truth.
-        // Remote data fully replaces local state.
-        // Only topicsProgress keeps local defaults for newly added topics
-        // (so new syllabus entries aren't lost if they don't exist remotely yet).
-        const remoteTopics = (remote.topicsProgress || {}) as Record<string, string>
-        const mergedTopics = {
-          ...current.topicsProgress,  // defaults for any new topics
-          ...remoteTopics,            // remote always wins
+        if (remoteData) {
+          // Firestore has data — use it as source of truth.
+          // Discard any stale crash-recovery stash since Firestore is fresher.
+          discardStash()
+
+          const remoteTopics = (remoteData.topicsProgress || {}) as Record<string, string>
+          const mergedTopics = {
+            ...current.topicsProgress,
+            ...remoteTopics,
+          }
+
+          skipNextSaveRef.current = true
+          useAppStore.setState({
+            user: (remoteData.user as typeof current.user) || current.user,
+            topicsProgress: mergedTopics,
+            logs: (remoteData.logs as typeof current.logs) || [],
+            tests: (remoteData.tests as typeof current.tests) || [],
+            revisionHistory: (remoteData.revisionHistory as typeof current.revisionHistory) || [],
+            dailyTasks: (remoteData.dailyTasks as typeof current.dailyTasks) || [],
+            weeklyTargets: (remoteData.weeklyTargets as typeof current.weeklyTargets) || [],
+            plannerSettings: (remoteData.plannerSettings as typeof current.plannerSettings) || current.plannerSettings,
+            appState: (remoteData.appState as typeof current.appState) || current.appState,
+            syncStatus: { state: 'saved', lastError: null },
+          } as Partial<typeof current>)
+        } else {
+          // Doc exists but store field missing — seed it with local data
+          const payload = buildPayload(current)
+          await setDoc(ref, { [STORE_FIELD]: payload }, { merge: true })
+          skipNextSaveRef.current = true
+          useAppStore.setState({
+            syncStatus: { state: 'saved', lastError: null },
+          } as Partial<typeof current>)
+        }
+      } else {
+        // Doc doesn't exist — check for crash-recovery stash
+        const hadStash = await recoverCrashData()
+        if (hadStash) {
+          // Re-read the recovered data
+          const snap2 = await getDoc(ref)
+          const remoteData2 = snap2.data()?.[STORE_FIELD] as Record<string, unknown> | undefined
+          if (remoteData2) {
+            skipNextSaveRef.current = true
+            useAppStore.setState({
+              user: (remoteData2.user as typeof current.user) || current.user,
+              topicsProgress: {
+                ...current.topicsProgress,
+                ...(remoteData2.topicsProgress as Record<string, string> || {}),
+              },
+              logs: (remoteData2.logs as typeof current.logs) || [],
+              tests: (remoteData2.tests as typeof current.tests) || [],
+              revisionHistory: (remoteData2.revisionHistory as typeof current.revisionHistory) || [],
+              dailyTasks: (remoteData2.dailyTasks as typeof current.dailyTasks) || [],
+              weeklyTargets: (remoteData2.weeklyTargets as typeof current.weeklyTargets) || [],
+              plannerSettings: (remoteData2.plannerSettings as typeof current.plannerSettings) || current.plannerSettings,
+              appState: (remoteData2.appState as typeof current.appState) || current.appState,
+              syncStatus: { state: 'saved', lastError: null },
+            } as Partial<typeof current>)
+            return
+          }
         }
 
-        // Set the guard BEFORE setState to prevent the subscribe handler
-        // from immediately saving back what we just loaded
-        skipNextSaveRef.current = true
-
-        useAppStore.setState({
-          user: (remote.user as typeof current.user) || current.user,
-          topicsProgress: mergedTopics,
-          logs: (remote.logs as typeof current.logs) || [],
-          tests: (remote.tests as typeof current.tests) || [],
-          revisionHistory: (remote.revisionHistory as typeof current.revisionHistory) || [],
-          dailyTasks: (remote.dailyTasks as typeof current.dailyTasks) || [],
-          weeklyTargets: (remote.weeklyTargets as typeof current.weeklyTargets) || [],
-          plannerSettings: (remote.plannerSettings as typeof current.plannerSettings) || current.plannerSettings,
-          appState: (remote.appState as typeof current.appState) || current.appState,
-        } as Partial<typeof current>)
-
-        setSyncStatus({ state: 'saved' })
-      } else {
-        // First-time user: push local state up to Firestore
+        // Truly first-time user: push local state up to Firestore
         const payload = buildPayload(current)
         await setDoc(ref, { [STORE_FIELD]: payload }, { merge: true })
-        setSyncStatus({ state: 'saved' })
+        skipNextSaveRef.current = true
+        useAppStore.setState({
+          syncStatus: { state: 'saved', lastError: null },
+        } as Partial<typeof current>)
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown load error'
-      setSyncStatus({ state: 'error', lastError: msg })
+
+      if (retryAttempt < MAX_LOAD_RETRIES) {
+        setSyncStatus({
+          state: 'saving',
+          lastError: `Retrying load (${retryAttempt + 1}/${MAX_LOAD_RETRIES})...`,
+        })
+        setTimeout(() => loadFromFirestore(retryAttempt + 1), LOAD_RETRY_DELAY_MS)
+      } else {
+        setSyncStatus({ state: 'error', lastError: msg })
+      }
     }
-  }, [user, setSyncStatus, flushPendingSave])
+  }, [user, setSyncStatus, discardStash, recoverCrashData])
 
   // Load data from Firestore when user signs in
   useEffect(() => {
@@ -173,7 +227,6 @@ export function FirestoreSync() {
     if (!isConfigured || !db || !user) return
 
     const unsub = useAppStore.subscribe((state) => {
-      // Skip the save that fires right after loading from Firestore
       if (skipNextSaveRef.current) {
         skipNextSaveRef.current = false
         return
